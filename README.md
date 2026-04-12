@@ -6,6 +6,17 @@ An experiment exploring the structural equivalence between Byzantine fault toler
 
 Full writeup: https://changkun.de/blog/ideas/agents-byzantine-tolerance/
 
+## Setup
+
+Agents are real coding agents in headless mode — not raw model API calls — so we observe realistic agentic failure modes (planning loops, tool use, hallucinations, etc.).
+
+- **Claude agents**: `claude -p --output-format json --permission-mode bypassPermissions`
+- **Codex agents**: `codex exec --sandbox read-only --skip-git-repo-check --ephemeral`
+
+Each agent runs in its own ephemeral working directory so they cannot see or stomp on each other's state during a round.
+
+Requirements: `claude` and `codex` CLIs on PATH, both authenticated.
+
 ## Approaches
 
 1. **Consensus-Gated Autonomous Actions** — High-risk decisions require multi-agent agreement before execution; low-risk actions proceed freely.

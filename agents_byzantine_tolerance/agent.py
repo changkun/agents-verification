@@ -1,73 +1,185 @@
-"""Base agent abstraction over multiple LLM providers."""
+"""Agent abstractions backed by Claude Code and Codex CLI in headless mode.
+
+Each agent is a full coding agent (not a raw model call) spawned as a
+subprocess in an isolated working directory. This is what makes the
+consensus/adversarial experiments realistic: the Byzantine participants
+have tool access, planning loops, and all the failure modes that come
+with agentic systems.
+"""
 
 from __future__ import annotations
 
-import os
+import asyncio
+import json
+import shutil
+import tempfile
+import uuid
 from dataclasses import dataclass
 from enum import Enum
-
-import anthropic
-import openai
+from pathlib import Path
 
 
-class Provider(Enum):
-    ANTHROPIC = "anthropic"
-    OPENAI = "openai"
+class Kind(Enum):
+    CLAUDE = "claude"
+    CODEX = "codex"
 
 
 @dataclass
 class AgentConfig:
-    provider: Provider
-    model: str
-    temperature: float = 1.0
+    kind: Kind
+    model: str | None = None  # None = CLI default
+    # Sandbox mode: keep agents from interfering with each other or the host.
+    # Claude: uses --permission-mode and restricted --tools.
+    # Codex: uses --sandbox.
+    sandbox: str = "read-only"
 
 
+# Sensible defaults for the experiment. Swap models via overrides.
 DEFAULT_CONFIGS = {
-    "claude-sonnet": AgentConfig(Provider.ANTHROPIC, "claude-sonnet-4-6"),
-    "claude-haiku": AgentConfig(Provider.ANTHROPIC, "claude-haiku-4-5-20251001"),
-    "gpt-4o": AgentConfig(Provider.OPENAI, "gpt-4o"),
-    "gpt-4o-mini": AgentConfig(Provider.OPENAI, "gpt-4o-mini"),
+    "claude-sonnet": AgentConfig(Kind.CLAUDE, model="claude-sonnet-4-6"),
+    "claude-haiku": AgentConfig(Kind.CLAUDE, model="claude-haiku-4-5-20251001"),
+    "claude-opus": AgentConfig(Kind.CLAUDE, model="claude-opus-4-6"),
+    "codex-default": AgentConfig(Kind.CODEX, model=None),
+    "codex-gpt5": AgentConfig(Kind.CODEX, model="gpt-5"),
 }
 
 
-class Agent:
-    """A single LLM agent that can participate in consensus protocols."""
+class AgentError(Exception):
+    """Raised when an agent subprocess fails or returns unparseable output."""
 
-    def __init__(self, agent_id: str, config: AgentConfig):
+
+@dataclass
+class AgentResponse:
+    agent_id: str
+    kind: Kind
+    model: str | None
+    stdout: str
+    stderr: str
+    returncode: int
+    # The final assistant message (text only), extracted from the CLI output.
+    final_message: str
+
+
+class Agent:
+    """A coding agent invoked in headless mode.
+
+    Each query runs in its own ephemeral working directory so agents cannot
+    see or stomp on each other's state within a single experiment round.
+    """
+
+    def __init__(self, agent_id: str, config: AgentConfig, workdir_root: Path | None = None):
         self.agent_id = agent_id
         self.config = config
+        self._workdir_root = workdir_root or Path(tempfile.gettempdir()) / "agents-bft"
+        self._workdir_root.mkdir(parents=True, exist_ok=True)
 
-        if config.provider == Provider.ANTHROPIC:
-            self._client = anthropic.Anthropic()
-        elif config.provider == Provider.OPENAI:
-            self._client = openai.OpenAI()
+    def _new_workdir(self) -> Path:
+        d = self._workdir_root / f"{self.agent_id}-{uuid.uuid4().hex[:8]}"
+        d.mkdir(parents=True, exist_ok=True)
+        # Codex insists on a git repo unless --skip-git-repo-check is passed;
+        # we pass that flag below so no init needed.
+        return d
 
-    async def query(self, prompt: str, system: str = "") -> str:
-        """Send a prompt and return the response text."""
-        if self.config.provider == Provider.ANTHROPIC:
-            client = anthropic.AsyncAnthropic()
-            msg = await client.messages.create(
-                model=self.config.model,
-                max_tokens=1024,
-                temperature=self.config.temperature,
-                system=system or anthropic.NOT_GIVEN,
-                messages=[{"role": "user", "content": prompt}],
-            )
-            return msg.content[0].text
+    async def query(self, prompt: str, system: str | None = None, timeout: float = 180.0) -> AgentResponse:
+        if self.config.kind == Kind.CLAUDE:
+            return await self._query_claude(prompt, system, timeout)
+        elif self.config.kind == Kind.CODEX:
+            return await self._query_codex(prompt, system, timeout)
+        else:
+            raise AgentError(f"Unknown kind: {self.config.kind}")
 
-        elif self.config.provider == Provider.OPENAI:
-            client = openai.AsyncOpenAI()
-            messages = []
-            if system:
-                messages.append({"role": "system", "content": system})
-            messages.append({"role": "user", "content": prompt})
-            resp = await client.chat.completions.create(
-                model=self.config.model,
-                max_tokens=1024,
-                temperature=self.config.temperature,
-                messages=messages,
-            )
-            return resp.choices[0].message.content
+    async def _query_claude(self, prompt: str, system: str | None, timeout: float) -> AgentResponse:
+        workdir = self._new_workdir()
+        cmd = [
+            "claude",
+            "-p",
+            "--output-format", "json",
+            "--permission-mode", "bypassPermissions",
+            "--no-session-persistence",
+        ]
+        if self.config.model:
+            cmd.extend(["--model", self.config.model])
+        if system:
+            cmd.extend(["--append-system-prompt", system])
+        cmd.append(prompt)
+
+        stdout, stderr, rc = await _run(cmd, cwd=workdir, timeout=timeout)
+
+        # --output-format json returns a single JSON object with a "result" field.
+        final = ""
+        try:
+            obj = json.loads(stdout)
+            final = obj.get("result") or obj.get("message") or ""
+        except json.JSONDecodeError:
+            # Fall back to raw stdout if parsing fails.
+            final = stdout.strip()
+
+        shutil.rmtree(workdir, ignore_errors=True)
+        return AgentResponse(
+            agent_id=self.agent_id,
+            kind=Kind.CLAUDE,
+            model=self.config.model,
+            stdout=stdout,
+            stderr=stderr,
+            returncode=rc,
+            final_message=final,
+        )
+
+    async def _query_codex(self, prompt: str, system: str | None, timeout: float) -> AgentResponse:
+        workdir = self._new_workdir()
+        last_msg_file = workdir / "_last_message.txt"
+
+        # Codex doesn't have a system-prompt flag in exec; prepend it to the user prompt.
+        full_prompt = f"{system.strip()}\n\n{prompt}" if system else prompt
+
+        cmd = [
+            "codex",
+            "exec",
+            "--skip-git-repo-check",
+            "--sandbox", self.config.sandbox,
+            "--ephemeral",
+            "-C", str(workdir),
+            "-o", str(last_msg_file),
+        ]
+        if self.config.model:
+            cmd.extend(["-m", self.config.model])
+        cmd.append(full_prompt)
+
+        stdout, stderr, rc = await _run(cmd, cwd=workdir, timeout=timeout)
+
+        final = ""
+        if last_msg_file.exists():
+            final = last_msg_file.read_text().strip()
+        if not final:
+            final = stdout.strip()
+
+        shutil.rmtree(workdir, ignore_errors=True)
+        return AgentResponse(
+            agent_id=self.agent_id,
+            kind=Kind.CODEX,
+            model=self.config.model,
+            stdout=stdout,
+            stderr=stderr,
+            returncode=rc,
+            final_message=final,
+        )
 
     def __repr__(self) -> str:
-        return f"Agent({self.agent_id!r}, {self.config.model})"
+        return f"Agent({self.agent_id!r}, {self.config.kind.value}, {self.config.model or 'default'})"
+
+
+async def _run(cmd: list[str], cwd: Path, timeout: float) -> tuple[str, str, int]:
+    proc = await asyncio.create_subprocess_exec(
+        *cmd,
+        cwd=str(cwd),
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    try:
+        stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+    except asyncio.TimeoutError:
+        proc.kill()
+        await proc.wait()
+        raise AgentError(f"Agent command timed out after {timeout}s: {cmd[0]}")
+
+    return stdout_b.decode("utf-8", errors="replace"), stderr_b.decode("utf-8", errors="replace"), proc.returncode or 0

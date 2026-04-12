@@ -1,8 +1,12 @@
-"""Experiment: Scalar consensus across varying agent group sizes.
+"""Experiment: Scalar consensus across heterogeneous Claude/Codex agents.
 
-Replicates and extends the finding from Berdoz et al. that valid consensus
-drops from 46.6% (N=4) to 33.3% (N=16). Tests both homogeneous (single model)
-and heterogeneous (mixed model) ensembles.
+The Byzantine setup: spawn N coding agents (mix of `claude -p` and `codex exec`
+in headless mode), give them a task that requires agreement on a single number,
+and measure (a) consensus rate and (b) the partial agreement map across trials.
+
+This is adversarial in the sense that we use *full coding agents* (with planning
+loops, tool access, the works) — not raw model calls — so all the realistic
+failure modes of agentic systems show up.
 """
 
 from __future__ import annotations
@@ -14,51 +18,50 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from agents_byzantine_tolerance.agent import Agent, AgentConfig, Provider, DEFAULT_CONFIGS
-from agents_byzantine_tolerance.consensus import scalar_consensus, ConsensusResult
+from agents_byzantine_tolerance.agent import Agent, DEFAULT_CONFIGS
+from agents_byzantine_tolerance.consensus import scalar_consensus
 
 SYSTEM_PROMPT = (
-    "You are participating in a consensus task. "
-    "You must respond with exactly one integer between 1 and 100. "
-    "Output only the number, nothing else."
+    "You are participating in a multi-agent consensus protocol. "
+    "Other independent agents are answering the same question in parallel. "
+    "You must converge on a single integer between 1 and 100. "
+    "Reply with ONLY the integer on the final line of your response. No extra text."
 )
 
-TASK_PROMPT = "Pick an integer between 1 and 100."
+TASK_PROMPT = (
+    "Pick an integer between 1 and 100 that other independent agents are most "
+    "likely to also pick. Reply with only the integer."
+)
 
-GROUP_SIZES = [4, 8, 12, 16]
-TRIALS_PER_SIZE = 20
-
-
-def make_homogeneous_agents(n: int, config_name: str = "claude-haiku") -> list[Agent]:
-    config = DEFAULT_CONFIGS[config_name]
-    return [Agent(f"agent-{i}", config) for i in range(n)]
+GROUP_SIZES = [3, 6, 9]
+TRIALS_PER_SIZE = 5
 
 
-def make_heterogeneous_agents(n: int) -> list[Agent]:
-    configs = list(DEFAULT_CONFIGS.values())
-    return [Agent(f"agent-{i}", configs[i % len(configs)]) for i in range(n)]
+def make_homogeneous_claude(n: int) -> list[Agent]:
+    cfg = DEFAULT_CONFIGS["claude-haiku"]
+    return [Agent(f"claude-{i}", cfg) for i in range(n)]
 
 
-async def run_experiment(
-    group_sizes: list[int] = GROUP_SIZES,
-    trials: int = TRIALS_PER_SIZE,
-    heterogeneous: bool = False,
-) -> dict:
-    results = {}
+def make_heterogeneous(n: int) -> list[Agent]:
+    """Alternate Claude and Codex agents."""
+    pool = [DEFAULT_CONFIGS["claude-haiku"], DEFAULT_CONFIGS["codex-default"]]
+    return [Agent(f"agent-{i}-{pool[i % 2].kind.value}", pool[i % 2]) for i in range(n)]
 
+
+async def run(group_sizes, trials, factory, label):
+    out = {}
     for n in group_sizes:
-        print(f"\n--- N={n} agents, {trials} trials {'(heterogeneous)' if heterogeneous else '(homogeneous)'} ---")
+        print(f"\n--- {label} | N={n} | {trials} trials ---")
         outcomes = []
-
         for t in range(trials):
-            if heterogeneous:
-                agents = make_heterogeneous_agents(n)
-            else:
-                agents = make_homogeneous_agents(n)
-
-            result = await scalar_consensus(
-                agents, TASK_PROMPT, system=SYSTEM_PROMPT, tolerance=0.0
-            )
+            agents = factory(n)
+            try:
+                result = await scalar_consensus(
+                    agents, TASK_PROMPT, system=SYSTEM_PROMPT, tolerance=0.0
+                )
+            except Exception as e:
+                print(f"  trial {t}: ERROR {e}")
+                continue
 
             outcomes.append({
                 "trial": t,
@@ -66,51 +69,40 @@ async def run_experiment(
                 "agreed_value": result.agreed_value,
                 "valid_count": result.valid_count,
                 "total": n,
-                "agreement_map": {
-                    str(k): v for k, v in result.agreement_map.items()
-                },
+                "agreement_map": {str(k): v for k, v in result.agreement_map.items()},
+                "raw": {aid: r.final_message for aid, r in result.responses.items()},
             })
 
-            status = "AGREED" if result.agreed else "DISAGREED"
-            groups = len(result.agreement_map)
-            print(f"  Trial {t:>2}: {status} | {result.valid_count}/{n} valid | {groups} distinct values")
+            status = "AGREE" if result.agreed else "DIVERGE"
+            print(f"  trial {t}: {status} | {result.valid_count}/{n} valid | {len(result.agreement_map)} groups")
 
-        agreed_count = sum(1 for o in outcomes if o["agreed"])
-        valid_rate = sum(o["valid_count"] for o in outcomes) / (len(outcomes) * n)
-
-        summary = {
+        agreed = sum(1 for o in outcomes if o["agreed"])
+        out[n] = {
             "n_agents": n,
-            "trials": trials,
-            "consensus_rate": agreed_count / trials,
-            "avg_valid_rate": valid_rate,
+            "trials": len(outcomes),
+            "consensus_rate": agreed / len(outcomes) if outcomes else 0,
             "outcomes": outcomes,
         }
-        results[n] = summary
-        print(f"  Consensus rate: {agreed_count}/{trials} = {summary['consensus_rate']:.1%}")
-        print(f"  Valid response rate: {valid_rate:.1%}")
-
-    return results
+        print(f"  consensus rate: {agreed}/{len(outcomes)}")
+    return out
 
 
 async def main():
-    print("=== Scalar Consensus Experiment ===\n")
+    print("=== Scalar Consensus Experiment ===")
+    print("Backend: claude -p + codex exec (headless mode)\n")
 
-    print("\n[1/2] Homogeneous ensemble (same model)")
-    homo_results = await run_experiment(heterogeneous=False)
-
-    print("\n\n[2/2] Heterogeneous ensemble (mixed models)")
-    hetero_results = await run_experiment(heterogeneous=True)
-
-    output = {
-        "homogeneous": {str(k): v for k, v in homo_results.items()},
-        "heterogeneous": {str(k): v for k, v in hetero_results.items()},
-    }
+    homo = await run(GROUP_SIZES, TRIALS_PER_SIZE, make_homogeneous_claude, "homogeneous-claude")
+    print("\n")
+    hetero = await run(GROUP_SIZES, TRIALS_PER_SIZE, make_heterogeneous, "heterogeneous-claude+codex")
 
     out_dir = Path(__file__).parent.parent / "results"
     out_dir.mkdir(exist_ok=True)
     out_path = out_dir / "scalar_consensus.json"
-    out_path.write_text(json.dumps(output, indent=2))
-    print(f"\nResults written to {out_path}")
+    out_path.write_text(json.dumps({
+        "homogeneous_claude": {str(k): v for k, v in homo.items()},
+        "heterogeneous": {str(k): v for k, v in hetero.items()},
+    }, indent=2))
+    print(f"\nResults: {out_path}")
 
 
 if __name__ == "__main__":
