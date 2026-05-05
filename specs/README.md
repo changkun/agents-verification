@@ -24,6 +24,10 @@ The seven experiments split into three architectures: **parallel consensus** (01
 
 7. **[07-adversarial-debate.md](07-adversarial-debate.md)** — Irving-2018-style debate. Proposer vs. critic across fixed rounds; judge inspects only the staked leaf. Tests the strong claim that soundness needs only one honest player plus a calibrated judge, not honest majority. Provides debate variants of 03 (bug detection), 04 (ambiguity), and 05 (action gating) for head-to-head against voting at equal compute.
 
+## Tooling specs
+
+8. **[08-debate-plugin.md](08-debate-plugin.md)** — productization spec (not an experiment). A `debate` CLI orchestrator + Claude Code plugin that runs adversarial review on coding sessions. Gated on spec 07a's critic-found-bug rate; do not build until 07 returns positive.
+
 ## Reading order
 
 If you only read two specs: **04** (ambiguous-spec detection — most actionable) and **06** (cascading — where classical BFT intuitions invert). For the architectural alternative to voting, read **07**. 01 is the shared baseline that the others build on.
