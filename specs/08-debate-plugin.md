@@ -15,7 +15,18 @@ When Claude finishes a coding task, run a critic (Codex by default) that produce
 - **Judge** — the human, but only at the end and only on unresolved leaves. Optional LLM-judge mode for triage.
 - **Mediator** — a small orchestrator process that routes messages between P and the Cᵢ and tracks per-claim resolution state. This is the actual binary we ship.
 
-Rounds:
+### Channel constraint (load-bearing)
+
+**Critic output must reach the proposer as a verbatim user message — no system-prompt wrapping, no skill framing, no slash-command template.** The proposer should react to critic comments the same way it would react to the human pasting a code review: full normal defense behavior, no "I'm in skill mode following steps" override.
+
+This rules out skills, slash commands, and any plugin-layer prompt template as the delivery channel. The mechanism is:
+
+- **Proposer side**: `claude --resume <session-id> -p "<critic output verbatim>"` injects the critic's text as a new user turn into the existing Claude Code session.
+- **Critic side**: `codex exec` (or equivalent) takes the proposer's text directly as input. Codex has no equivalent of skills/commands, so this side is naturally clean.
+
+The same constraint applies symmetrically — the proposer's response goes back to the critic verbatim, no orchestrator-side prompt scaffolding beyond what's required to identify whose turn it is.
+
+### Rounds
 
 1. **R0 — Trigger.** Claude finishes a coding task (Stop hook, or manual `/debate`).
 2. **R1 — Attack.** Each Cᵢ produces a structured attack list against the diff. Each attack must name a concrete leaf: `{location, claim, expected violation, reproduction}`. Attacks lacking a reproduction are dropped at parse time, not by the proposer.
@@ -25,48 +36,43 @@ Rounds:
 
 ## Build options
 
-### Option A — Pure Claude Code plugin (Stop hook does everything)
+The channel constraint above eliminates most of the design space. Anything that wraps the critic's output in framing (skills, slash commands, plugin command templates) is out. What remains:
 
-Hook script invokes Codex via shell, parses output, uses `claude --resume` (or session continuation) to feed attacks back into Claude.
+### Option A — CLI binary only
 
-- Pro: one artifact, zero-config if both CLIs are installed.
-- Con: orchestration buried in a hook script; hard to reuse from CI; multi-critic gets ugly fast.
-- Verdict: only viable if the plugin is small. With multi-critic + multi-turn it's wrong.
-
-### Option B — External CLI orchestrator only
-
-A standalone `debate` binary spawns proposer and critic CLIs, mediates rounds, prints the wrap-up.
+A standalone `debate` orchestrator. User invokes from terminal after a coding session.
 
 ```
 debate --max-turn=10 --main claude --side codex --side-count=3 \
-       --aspect correctness,security,perf
+       --aspect correctness,security,perf --session-id <claude-session>
 ```
 
-- Pro: composable; works in CI; trivially supports new critics (Gemini, local model); multi-critic is just more subprocess spawns.
-- Con: not native to Claude Code; user must invoke manually.
-- Verdict: this is the right primitive. Should exist regardless of whether a plugin exists.
+The CLI uses `claude --resume <id>` to inject critic comments as user turns into the existing Claude Code session, and `codex exec` to run the critic.
 
-### Option C — Hybrid: CLI orchestrator + thin Claude Code plugin (recommended)
+- Pro: clean channel (verbatim user-message injection); composable; works in CI; trivially supports more critics.
+- Con: not auto-triggered; user must invoke manually after each session.
+- Verdict: **this is the primitive.** Build first.
 
-Build B as the core. Ship a Claude Code plugin whose Stop hook (or `/debate` slash command) is a tiny shell wrapper that invokes B with the current session's diff and original task.
+### Option B — CLI + opt-in Stop hook (recommended)
 
-- Pro: orchestrator is reusable; plugin is ergonomic; critic logic lives in one place.
-- Con: two artifacts.
-- Verdict: **recommended.** Ship the CLI first; the plugin is glue on top.
+Same CLI as A. Add a Stop hook in `.claude/settings.json` that captures the just-finished session ID and invokes the CLI against it.
 
-### Option D — Slash command, no Stop hook
+- Pro: automatic triggering for users who want it; manual invocation still works.
+- Con: requires Stop hook to be able to capture session ID and the CLI to drive `--resume` against a session that just stopped (verify mechanics in a spike before committing).
+- Verdict: **recommended once A works.** Hook is two lines of shell that calls the CLI; no plugin, no skill, no slash command.
 
-Same backend as C, but invocation is always `/debate`, never automatic.
+### Rejected options
 
-- Pro: user controls when to pay the cost; never disrupts flow.
-- Con: easy to forget; defeats automatic verification.
-- Verdict: ship both modes. **Default to manual** (slash command); auto-Stop is opt-in.
+- **Slash command (`/debate`)**: violates the channel constraint — slash commands inject a template into the conversation. Even if the template only said "run the debate process," that's still a system-prompt-shaped artifact the proposer sees before the critic's text.
+- **Skill (`debate-review` or `debate-defense`)**: same reason. Skills carry instructions Claude follows. The whole point is that Claude follows its *normal* coding-feedback instincts when responding to the critic, not a skill-specific methodology.
+- **Plugin packaging**: premature productization. A two-line hook + a CLI binary doesn't need a plugin manifest. Revisit if a second user shows up.
 
 ## CLI surface
 
 ```
 debate [--main claude] [--side codex] [--side-count 1]
        [--max-turn 6] [--aspect general]
+       [--session-id <claude-session-id>]
        [--diff-from HEAD] [--diff-to .]
        [--task-context "<original task>"]
        [--judge none|llm|human]
@@ -76,22 +82,28 @@ debate [--main claude] [--side codex] [--side-count 1]
 
 Notes:
 
+- `--session-id` is the load-bearing flag. When given, the orchestrator drives the proposer with `claude --resume <id> -p "<critic-output-verbatim>"` each round. Without it, the orchestrator falls back to fresh `claude -p` invocations per round (more expensive, no session continuity).
 - `--side-count` and `--aspect` interact: if `--aspect a,b,c` is given with `--side-count 3`, each critic gets one aspect. If counts mismatch, error.
 - `--max-turn` counts P+C exchanges combined. 6 = 3 attack rounds + 3 defense rounds.
-- `--task-context` is mandatory in CLI mode. The critic without task context produces irrelevant attacks ("why does this function exist?"). The plugin populates this from the Claude Code session automatically.
+- `--task-context` is mandatory when no `--session-id` is given (critic without task context produces irrelevant attacks). With `--session-id`, the orchestrator can extract the original task from the session's first user turn.
 - `--cost-cap` is mandatory and aborts gracefully (surfaces partial review). Multi-critic multi-turn debates blow token budgets fast.
 - Exit code 0 if zero unresolved leaves, 1 otherwise. Lets it gate CI.
 
-## Plugin surface (Claude Code)
+## Hook surface (optional)
 
-```
-.claude/plugins/debate/
-  hooks/Stop.sh         # invokes `debate` with session diff + task
-  commands/debate.md    # /debate slash command, manual invocation
-  config.json           # defaults
+A single Stop hook entry in `.claude/settings.json`:
+
+```json
+{
+  "hooks": {
+    "Stop": [{
+      "command": "debate --session-id $CLAUDE_SESSION_ID --max-turn 6"
+    }]
+  }
+}
 ```
 
-Default config: `/debate` enabled (manual), Stop hook **disabled**. User opts in with `"trigger": "stop"` in plugin config.
+That's it. No plugin manifest, no slash command, no skill. The hook is two lines because all the work is in the CLI. Default: hook is **not installed**; users opt in by adding the entry.
 
 ## Configuration
 
@@ -154,6 +166,8 @@ The unresolved section is the entire justification for the tool. If it's mostly 
 
 ## Out of scope
 
+- **Skill or slash-command entry points.** Both wrap critic output in framing that distorts the proposer's response. The channel constraint says verbatim user-message via `claude --resume` only.
+- **Plugin packaging.** Two-line hook + CLI binary doesn't need a manifest. Revisit only if multiple unrelated users adopt it.
 - Training a better critic. Use whatever Codex gives us; if it's bad, the tool fails (and that's the right outcome).
 - Streaming TUI. v1 is batch.
 - Persistent debate state across sessions. Each invocation is fresh against the current diff.

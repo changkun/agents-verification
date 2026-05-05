@@ -26,7 +26,7 @@ The seven experiments split into three architectures: **parallel consensus** (01
 
 ## Tooling specs
 
-8. **[08-debate-plugin.md](08-debate-plugin.md)** — productization spec (not an experiment). A `debate` CLI orchestrator + Claude Code plugin that runs adversarial review on coding sessions. Gated on spec 07a's critic-found-bug rate; do not build until 07 returns positive.
+8. **[08-debate-plugin.md](08-debate-plugin.md)** — productization spec (not an experiment). A `debate` CLI orchestrator with an optional Stop hook. Critic output is delivered to the proposer as a verbatim user message via `claude --resume`; no skills, slash commands, or plugin templates allowed in the channel. Gated on spec 07a's critic-found-bug rate; do not build until 07 returns positive.
 
 ## Reading order
 
