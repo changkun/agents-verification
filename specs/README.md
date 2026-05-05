@@ -2,7 +2,7 @@
 
 Each spec describes one self-contained experiment: what it measures, how it's set up, ground truth (if any), and the hypotheses being tested.
 
-Seven experiments split into three architectures: **parallel consensus** (01–05), where N agents answer the same question independently; **sequential chains** (06), where agents process each other's output; and **adversarial dialectic** (07), where two agents debate under an external judge. A separate repo, [changkun/debate](https://github.com/changkun/debate), holds the tool that productizes architecture 07 and is gated on spec 07a's results.
+Seven experiments split into three architectures: **parallel consensus** (01–05), where N agents answer the same question independently; **sequential chains** (06), where agents process each other's output; and **adversarial dialectic** (07), where two agents debate under an external judge. A separate repo, [latere-ai/debate](https://github.com/latere-ai/debate), holds the tool that productizes architecture 07 and is gated on spec 07a's results.
 
 ## Parallel-consensus experiments
 
@@ -26,7 +26,7 @@ Seven experiments split into three architectures: **parallel consensus** (01–0
 
 ## Productization
 
-The tool spec that builds on spec 07 lives in a separate repo: [changkun/debate](https://github.com/changkun/debate). It's gated on this repo's spec 07a returning positive (critic-found-bug rate ≥ 60%); do not build until then.
+The tool spec that builds on spec 07 lives in a separate repo: [latere-ai/debate](https://github.com/latere-ai/debate). It's gated on this repo's spec 07a returning positive (critic-found-bug rate ≥ 60%); do not build until then.
 
 ## Reading order
 
