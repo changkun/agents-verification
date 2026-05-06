@@ -15,7 +15,7 @@ invocations.
 | Spec | Directory | Status | Headline |
 |------|-----------|--------|----------|
 | [01 Verifiable consensus](../specs/01-verifiable-consensus.md) | [01_verifiable_consensus/](01_verifiable_consensus/) | smoke ✅ | Unanimous → correct in 2/2 smoke cells (N=3) |
-| [02 Byzantine injection](../specs/02-byzantine-injection.md)   | — | ⏳ pending | — |
+| [02 Byzantine injection](../specs/02-byzantine-injection.md)   | [02_byzantine_injection/](02_byzantine_injection/) | smoke ✅ | Strong-lie efficacy collapsed at f=2 — agents overruled the injection |
 | [03 Bug detection](../specs/03-bug-detection-consensus.md)     | — | ⏳ pending | — |
 | [04 Ambiguous spec](../specs/04-ambiguous-spec-detection.md)   | — | ⏳ pending | — |
 | [05 Consensus gate](../specs/05-consensus-gated-actions.md)    | — | ⏳ pending | — |

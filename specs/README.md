@@ -9,7 +9,7 @@ Seven experiments split into three architectures: **parallel consensus** (01–0
 | Spec | Implementation | Smoke run | Full run | Results |
 |------|----------------|-----------|----------|---------|
 | 01 — Verifiable consensus      | ✅ | ✅ 2026-05-06 | ⏳ | [`results/01_verifiable_consensus/`](../results/01_verifiable_consensus/) |
-| 02 — Byzantine injection       | ⏳ | ⏳ | ⏳ | — |
+| 02 — Byzantine injection       | ✅ | ✅ 2026-05-06 | ⏳ | [`results/02_byzantine_injection/`](../results/02_byzantine_injection/) |
 | 03 — Bug detection             | ⏳ | ⏳ | ⏳ | — |
 | 04 — Ambiguous-spec detection  | ⏳ | ⏳ | ⏳ | — |
 | 05 — Consensus-gated actions   | ⏳ | ⏳ | ⏳ | — |
