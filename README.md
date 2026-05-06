@@ -23,6 +23,134 @@ Requirements: `claude` and `codex` CLIs on PATH, both authenticated.
 2. **Testing as Distributed Consensus** — Multiple independent agents must agree on test pass/fail; disagreement indicates specification ambiguity.
 3. **Partial Agreement Maps** — Structured views showing where agents converge vs. diverge, treating disagreement as the most informative signal.
 
+## Architectures under test
+
+The seven specs split across three multi-agent patterns. Each pattern is what
+the spec hypothesises about — the harness diagram below it is shared across
+all of them.
+
+### Parallel consensus (specs 01, 03, 04, 05; 02 is the Byzantine variant)
+
+N agents answer the *same* prompt independently in isolated workdirs; an
+aggregator clusters the parsed values and scores correctness against ground
+truth. Disagreement *between* agents is the structural signal.
+
+```text
+                 ┌──────────────────────────┐
+                 │ task: question / spec /  │
+                 │ snippet / action         │
+                 └──────────────┬───────────┘
+                                │  (same user prompt to each)
+        ┌───────────────────────┼───────────────────────┐
+        ▼                       ▼                       ▼
+   ┌─────────┐             ┌─────────┐             ┌─────────┐
+   │ agent 1 │             │ agent 2 │     ...     │ agent N │
+   │ isolated│             │ isolated│             │ isolated│
+   │ workdir │             │ workdir │             │ workdir │
+   └────┬────┘             └────┬────┘             └────┬────┘
+        │                       │                       │
+        ▼                       ▼                       ▼
+       "0"                     "0"                     "7"
+         \                      |                      /
+          └────────────┬────────┴────────┬────────────┘
+                       ▼                 ▼
+            ┌─────────────────────────────────────┐
+            │ aggregator: parse → cluster → score │
+            │ • unanimous?  majority?  fragmented?│
+            │ • correct vs ground truth?          │
+            └─────────────────────────────────────┘
+
+Spec 02 (Byzantine injection) is the same shape, but f of N agents
+get a private extra system-prompt segment that the others never see:
+
+   honest:    sys = HONEST_PROMPT
+   Byzantine: sys = HONEST_PROMPT + "<strong-lie or subtle-misdirection>"
+```
+
+### Sequential chain (spec 06)
+
+K stages run one after another. Each stage's *user* prompt contains the prior
+stage's output (and optionally the original source). This is where Byzantine
+errors *amplify* rather than average out.
+
+```text
+   source doc ─► [stage 0: parser] ─► output_0 ─┐
+                                                │
+                     ▼  (or seed override)      │
+                 [stage 1: analyst]─► output_1 ─┤
+                                                │
+                     ▼                          │
+                 [stage 2: writer] ─► output_2 ─┴─► end-to-end check
+
+   source visibility flag:
+     first-only   – only stage 0 sees `source`; later stages see only the
+                    previous stage's output (the propagation case).
+     every-stage  – every stage also sees `source` (tests re-grounding).
+
+   seed conditions:
+     clean           – run all stages naturally; measure spontaneous error rate.
+     seeded-subtle   – replace stage k's output with a plausible-but-wrong value.
+     seeded-obvious  – replace with a flagrantly wrong value.
+```
+
+### Adversarial dialectic (spec 07)
+
+Two agents (Proposer, Critic) play a fixed 4-round game; an *external* judge
+inspects only the critic's R4 stake. Soundness no longer needs honest
+majority — it needs one honest player plus a calibrated leaf judge.
+
+```text
+       snippet + spec
+            │
+            ▼
+   ┌──────────────────────────────────┐
+   │ R1: Proposer  →  claim           │  "no_bug" / "bug at L kind=K"
+   └─────────────┬────────────────────┘
+                 ▼
+   ┌──────────────────────────────────┐
+   │ R2: Critic    →  attacks[]       │  ≤ 3 concrete inputs+violations
+   └─────────────┬────────────────────┘
+                 ▼
+   ┌──────────────────────────────────┐
+   │ R3: Proposer  →  responses[]     │  concede or rebut each
+   └─────────────┬────────────────────┘
+                 ▼
+   ┌──────────────────────────────────┐
+   │ R4: Critic    →  stake (one      │  pick one unresolved attack
+   │                  attack)         │
+   └─────────────┬────────────────────┘
+                 ▼
+   ┌──────────────────────────────────┐
+   │ deterministic judge sees ONLY    │  cost-of-attention: judge reads
+   │ the R4 stake:                    │  one leaf, not the whole transcript
+   │   line±1 OR kind match → C_wins  │
+   │   else                 → P_wins  │
+   └──────────────────────────────────┘
+```
+
+### Common harness (all specs)
+
+Every agent invocation goes through the same plumbing. This is what makes
+results comparable across architectures.
+
+```text
+   _repo_cache/<repo>@<sha>/                  ◄── git clone, ref-pinned
+            │
+            │ shutil.copytree (APFS clonefile when available)
+            ▼
+   /tmp/agents-bft/<agent_id>-<uuid>/         ◄── fresh per-invocation workdir
+            │
+            │ env scrubbed: ANTHROPIC_API_KEY, CLAUDE_CODE_*, OPENAI_*
+            │ (so the child agent uses its own credentials, not the parent's)
+            ▼
+   `claude -p` or `codex exec`                ◄── real coding agents,
+            │                                    not raw model calls
+            │ stdout → strict-int / JSON parser
+            ▼
+   per-cell record → results/<spec>/<tag>.jsonl   ◄── flushed every cell;
+                                                     resumable via --resume
+```
+
 ## One-time setup
 
 ```bash
