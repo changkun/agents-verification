@@ -1,0 +1,58 @@
+# Pipeline definitions for Experiment 06 — Cascading Hallucination.
+#
+# A pipeline is K stages run sequentially. Each stage:
+#   - id, role: human-readable
+#   - prompt: a Python str.format template that receives:
+#         {source}        - the original source document text
+#         {prior_output}  - the previous stage's final-line output
+#         {source_block}  - either {source} or "" depending on
+#                           the source_visibility flag at runtime
+#   - ground_truth: the canonical correct output for this stage
+#   - parser: how to extract the comparable value from the agent's
+#             reply. Currently supports "int" or "float".
+#
+# `seeds` define alternative outputs the experimenter can substitute for
+# stage-0 to test how downstream stages handle a planted error.
+
+pipelines:
+  - id: numeric_sum_mean
+    description: |
+      Two-stage numeric pipeline. Stage 0 computes the sum of a list of
+      numbers; stage 1 takes that sum and divides by the count to produce
+      a mean. Errors are measurable in closed form at every stage.
+    source: |
+      Numbers: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10
+    stages:
+      - id: sum
+        role: parser
+        prompt: |
+          The source document below contains a list of numbers.
+
+          SOURCE:
+          {source}
+
+          Compute the sum of all the numbers. Reply with only the integer
+          sum on the final line of your response. No prose on that line.
+        ground_truth: 55
+        parser: int
+      - id: mean
+        role: analyst
+        prompt: |
+          A previous stage computed the SUM of a list of numbers as: {prior_output}
+
+          The list contained exactly 10 numbers.
+          {source_block}
+
+          Divide the sum by 10 to produce the mean. Reply with only the
+          single numeric value on the final line. No prose on that line.
+        ground_truth: 5.5
+        parser: float
+    seeds:
+      subtle:
+        stage_index: 0
+        false_value: "60"
+        description: "Plausible-but-wrong sum (off by 5)"
+      obvious:
+        stage_index: 0
+        false_value: "99999"
+        description: "Flagrantly wrong sum (8,999,890% over true value)"

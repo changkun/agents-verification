@@ -19,7 +19,7 @@ invocations.
 | [03 Bug detection](../specs/03-bug-detection-consensus.md)     | [03_bug_detection/](03_bug_detection/) | smoke ✅ | 4/4 unanimous-correct on N=3 across all categories (bank too small to test H3) |
 | [04 Ambiguous spec](../specs/04-ambiguous-spec-detection.md)   | [04_ambiguous_spec/](04_ambiguous_spec/) | smoke ✅ | AUC 0.86 (1 pair, N=3) — disagreement tracks ambiguity, but tiny sample |
 | [05 Consensus gate](../specs/05-consensus-gated-actions.md)    | [05_consensus_gate/](05_consensus_gate/) | smoke ✅ | 4/4 correct on N=3, but every cell unanimous — gates indistinguishable here |
-| [06 Cascading hallucination](../specs/06-cascading-hallucination.md) | — | ⏳ pending | — |
+| [06 Cascading hallucination](../specs/06-cascading-hallucination.md) | [06_cascading/](06_cascading/) | smoke ✅ | Stage-1 trusted upstream-seeded sum even with source visible — H2 partly contradicted at K=2 |
 | [07 Adversarial debate](../specs/07-adversarial-debate.md)     | — | ⏳ pending | — |
 
 ## File conventions
