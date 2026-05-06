@@ -1,0 +1,115 @@
+# Snippet bank for Experiment 03 — Bug-detection consensus.
+#
+# This is a *minimal* bank (one snippet per category) sized for smoke runs
+# and to validate the pipeline. The spec calls for ~35 snippets total
+# (10/10/10/5 across categories); expand this file before claiming any
+# results from a full sweep.
+#
+# Each snippet:
+#   id: short ID
+#   category: clear | subtle | no-bug | ambiguous
+#   spec: short prose specification of intended behaviour
+#   code: the source under review
+#   ground_truth:
+#     has_bug: bool
+#     lines: [int]      # 1-indexed lines in `code` where the bug lives, [] if none
+#     kind: str         # short label for the bug class, "" if none
+#     rationale: str    # why this is the ground truth (for the experimenter)
+#
+# Per spec 03 §"Open questions": don't include category in the prompt to the
+# agent. The runner strips ground_truth and category before showing the snippet.
+
+snippets:
+  - id: S01
+    category: clear
+    spec: |
+      `IndexLast(s)` returns the last element of `s`, or 0 if `s` is empty.
+    code: |
+      package x
+
+      // IndexLast returns the last element of s, or 0 if empty.
+      func IndexLast(s []int) int {
+          if len(s) == 0 {
+              return 0
+          }
+          return s[len(s)]
+      }
+    ground_truth:
+      has_bug: true
+      lines: [8]
+      kind: off-by-one
+      rationale: "s[len(s)] is out of bounds; should be s[len(s)-1]."
+
+  - id: S02
+    category: subtle
+    spec: |
+      `Average(a, b)` returns the average of two int32 values. The function
+      must work correctly for any pair of int32 inputs, including extremes
+      near math.MaxInt32 / math.MinInt32.
+    code: |
+      package x
+
+      // Average returns the average of a and b.
+      func Average(a, b int32) int32 {
+          return (a + b) / 2
+      }
+    ground_truth:
+      has_bug: true
+      lines: [5]
+      kind: integer-overflow
+      rationale: "(a + b) overflows int32 at boundary inputs; safe form is a/2 + b/2 + (a&b&1)."
+
+  - id: S03
+    category: no-bug
+    spec: |
+      `Clamp(v, lo, hi)` clamps v to the closed interval [lo, hi]. The caller
+      is responsible for ensuring lo <= hi; if lo > hi, the function MUST
+      return lo (this is part of the API contract for caller-error inputs).
+    code: |
+      package x
+
+      // Clamp clamps v to [lo, hi]. If lo > hi, returns lo.
+      func Clamp(v, lo, hi int) int {
+          if lo > hi {
+              return lo
+          }
+          if v < lo {
+              return lo
+          }
+          if v > hi {
+              return hi
+          }
+          return v
+      }
+    ground_truth:
+      has_bug: false
+      lines: []
+      kind: ""
+      rationale: "Looks fishy because lo>hi returns lo unchanged, but the spec explicitly demands that behaviour."
+
+  - id: S04
+    category: ambiguous
+    spec: |
+      `FormatList(items)` formats `items` as a string. The spec deliberately
+      does NOT specify the format for the empty list, the separator, or
+      whether the result should be enclosed in brackets — it just says
+      "format items as a string."
+    code: |
+      package x
+
+      // FormatList formats items as a comma-separated string.
+      func FormatList(items []string) string {
+          if len(items) == 0 {
+              return ""
+          }
+          out := items[0]
+          for _, x := range items[1:] {
+              out += ", " + x
+          }
+          return out
+      }
+    ground_truth:
+      has_bug: false
+      lines: []
+      kind: ""
+      rationale: "Implementation is internally consistent. Whether `\"\"` is the right empty-list rendering is genuinely ambiguous — agents may legitimately disagree."
