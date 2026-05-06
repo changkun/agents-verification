@@ -25,6 +25,20 @@ Requirements: `claude` and `codex` CLIs on PATH, both authenticated.
 
 ## Experiments
 
+### 01 — Verifiable Consensus
+
+Implementation of [`specs/01-verifiable-consensus.md`](specs/01-verifiable-consensus.md). N agents
+answer questions with mechanical ground truth against a pinned target repo;
+measures liveness (did they agree?) and safety (were they right?).
+
+```bash
+uv sync                                                    # install deps (pyyaml)
+python experiments/01_compute_ground_truth.py              # clone repo, compute GT → questions.yaml
+python experiments/01_verifiable_consensus.py --smoke      # tiny end-to-end check
+python experiments/01_verifiable_consensus.py              # full run (slow; --resume to continue)
+python analysis/01_plot.py                                 # markdown summary + plots
+```
+
 ### Scalar Consensus
 
 Replicate and extend the finding that valid consensus drops from 46.6% (N=4) to 33.3% (N=16) agents. Measure liveness vs. safety failures across agent counts and model configurations.

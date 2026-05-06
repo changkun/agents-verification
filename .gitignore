@@ -11,4 +11,17 @@ venv/
 .env
 .python-version
 *.log
-results/
+
+# Cloned target repos are big and reproducible from URL+SHA in questions.yaml.
+_repo_cache/
+
+# Question banks with populated ground-truth answers are gitignored to limit
+# training-data contamination via web scrapes. Use questions.example.yaml
+# as the template and run experiments/01_compute_ground_truth.py to populate.
+experiments/questions.yaml
+
+# Top-level analysis/ is for *latest-run* output; results/ is the versioned home
+# for committed run artefacts. The latter IS committed.
+analysis/*.png
+analysis/*.md
+!analysis/README.md

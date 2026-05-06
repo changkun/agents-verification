@@ -1,0 +1,132 @@
+# Question bank for Experiment 01 — Verifiable Consensus.
+#
+# This file is the *template*; copy it to `questions.yaml` and run
+# `experiments/01_compute_ground_truth.py` to populate ground-truth answers.
+# `questions.yaml` is gitignored so committed answers don't leak into agent
+# context via training-data scrapes.
+#
+# Each question:
+#   - has a single non-negative integer ground-truth answer
+#   - is computable mechanically by 01_compute_ground_truth.py
+#   - is phrased so the agent has to read code, not just count files
+
+target_repo:
+  url: https://github.com/mvdan/sh.git
+  ref: v3.10.0       # tag or branch; resolved to sha on first ground-truth run
+  sha: null          # populated by compute_ground_truth.py
+
+# Subdirectory of the cached clone that the agent is dropped into.
+# `null` means "the repo root".
+agent_cwd_subpath: null
+
+questions:
+  - id: Q01
+    category: ast
+    compute: q01_exported_funcs_first_param_parser
+    prompt: |
+      The Go source for the package `syntax` is in the `syntax/` directory of your
+      current working directory. Count the number of exported top-level functions
+      (not methods) declared in non-test files of that package whose FIRST parameter
+      has type `*Parser` (pointer to Parser). "Exported" means the function name
+      begins with an uppercase letter. Do not count functions in `_test.go` files.
+
+  - id: Q02
+    category: ast
+    compute: q02_exported_types_in_printer_go
+    prompt: |
+      Open the file `syntax/printer.go` in your current working directory. Count the
+      number of distinct exported type declarations (`type Foo ...`) in that single
+      file. "Exported" means the type name begins with an uppercase letter. Count
+      each named type exactly once even if it appears in a `type ( ... )` block.
+
+  - id: Q03
+    category: combined
+    compute: q03_main_go_files_under_cmd
+    prompt: |
+      In the directory `cmd/` (recursive) of your current working directory, count
+      the number of `.go` files that declare a top-level `func main()`. Exclude
+      test files (ending in `_test.go`).
+
+  - id: Q04
+    category: grep
+    compute: q04_test_files_with_t_parallel
+    prompt: |
+      Count the number of `*_test.go` files inside the `syntax/` directory of your
+      current working directory whose contents include the literal substring
+      `t.Parallel()`.
+
+  - id: Q05
+    category: loc
+    compute: q05_loc_lexer_go
+    prompt: |
+      Open the file `syntax/lexer.go` in your current working directory. Count the
+      number of lines that are neither blank nor a comment. A line counts as blank
+      if it contains only whitespace. A line counts as a comment if, after leading
+      whitespace is stripped, it begins with `//` OR if it falls inside a `/* ... */`
+      block comment (the lines opening, closing, or wholly inside such a block all
+      count as comments). All other lines (including lines with trailing comments)
+      count.
+
+  - id: Q06
+    category: grep
+    compute: q06_todo_comment_count
+    prompt: |
+      Across all `.go` files in your current working directory (recursive), count
+      the number of source lines that contain a `TODO` marker inside a Go comment.
+      A "TODO marker" means the literal uppercase string `TODO` appearing after a
+      `//` or inside a `/* ... */` comment on that line. Do not count occurrences
+      inside string literals.
+
+  - id: Q07
+    category: ast
+    compute: q07_methods_on_runner
+    prompt: |
+      In the Go package located at `interp/` of your current working directory,
+      count the number of methods declared on the type `Runner` (or `*Runner`).
+      A "method on Runner" means any function declaration whose receiver is
+      `Runner` or `*Runner`. Include methods in any file in `interp/` except
+      `_test.go` files.
+
+  - id: Q08
+    category: parse
+    compute: q08_direct_requires_in_go_mod
+    prompt: |
+      Open the top-level `go.mod` file in your current working directory. Count
+      the number of direct module dependencies declared via `require`. A
+      dependency is "direct" if its require line does NOT have a `// indirect`
+      trailing comment. Count each module path exactly once.
+
+  - id: Q09
+    category: grep
+    compute: q09_errors_new_calls_in_syntax
+    prompt: |
+      In the `syntax/` directory of your current working directory (non-test
+      files only), count the number of `errors.New(` call sites. Each occurrence
+      of the literal text `errors.New(` in source code (not comments, not string
+      literals) counts as one call site.
+
+  - id: Q10
+    category: ast
+    compute: q10_exported_consts_in_tokens_go
+    prompt: |
+      Open the file `syntax/tokens.go` in your current working directory. Count
+      the number of exported constants declared in that file. "Exported" means
+      the constant name begins with an uppercase letter. A `const ( ... )` block
+      may declare many constants; count each individually.
+
+  - id: Q11
+    category: grep
+    compute: q11_panic_calls_in_syntax
+    prompt: |
+      In the `syntax/` directory of your current working directory (non-test
+      files only), count the number of `panic(` call sites in source code (not
+      comments, not string literals).
+
+  - id: Q12
+    category: combined
+    compute: q12_subtests_in_syntax_tests
+    prompt: |
+      In the `syntax/` directory of your current working directory, look only at
+      `*_test.go` files. Count the number of top-level test functions (signature
+      `func Test...(t *testing.T)`) whose body contains at least one `t.Run(`
+      call.

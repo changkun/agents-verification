@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import shutil
 import tempfile
 import uuid
@@ -73,23 +74,33 @@ class Agent:
         self._workdir_root = workdir_root or Path(tempfile.gettempdir()) / "agents-bft"
         self._workdir_root.mkdir(parents=True, exist_ok=True)
 
-    def _new_workdir(self) -> Path:
+    def _new_workdir(self, seed_dir: Path | None = None) -> Path:
         d = self._workdir_root / f"{self.agent_id}-{uuid.uuid4().hex[:8]}"
         d.mkdir(parents=True, exist_ok=True)
         # Codex insists on a git repo unless --skip-git-repo-check is passed;
         # we pass that flag below so no init needed.
+        if seed_dir is not None:
+            _seed_workdir(seed_dir, d)
         return d
 
-    async def query(self, prompt: str, system: str | None = None, timeout: float = 180.0) -> AgentResponse:
+    async def query(
+        self,
+        prompt: str,
+        system: str | None = None,
+        timeout: float = 180.0,
+        seed_dir: Path | None = None,
+    ) -> AgentResponse:
         if self.config.kind == Kind.CLAUDE:
-            return await self._query_claude(prompt, system, timeout)
+            return await self._query_claude(prompt, system, timeout, seed_dir)
         elif self.config.kind == Kind.CODEX:
-            return await self._query_codex(prompt, system, timeout)
+            return await self._query_codex(prompt, system, timeout, seed_dir)
         else:
             raise AgentError(f"Unknown kind: {self.config.kind}")
 
-    async def _query_claude(self, prompt: str, system: str | None, timeout: float) -> AgentResponse:
-        workdir = self._new_workdir()
+    async def _query_claude(
+        self, prompt: str, system: str | None, timeout: float, seed_dir: Path | None
+    ) -> AgentResponse:
+        workdir = self._new_workdir(seed_dir)
         cmd = [
             "claude",
             "-p",
@@ -125,8 +136,10 @@ class Agent:
             final_message=final,
         )
 
-    async def _query_codex(self, prompt: str, system: str | None, timeout: float) -> AgentResponse:
-        workdir = self._new_workdir()
+    async def _query_codex(
+        self, prompt: str, system: str | None, timeout: float, seed_dir: Path | None
+    ) -> AgentResponse:
+        workdir = self._new_workdir(seed_dir)
         last_msg_file = workdir / "_last_message.txt"
 
         # Codex doesn't have a system-prompt flag in exec; prepend it to the user prompt.
@@ -168,12 +181,51 @@ class Agent:
         return f"Agent({self.agent_id!r}, {self.config.kind.value}, {self.config.model or 'default'})"
 
 
+def _seed_workdir(src: Path, dst: Path) -> None:
+    """Populate dst with the contents of src.
+
+    Uses shutil.copytree, which on macOS APFS transparently uses clonefile()
+    (copy-on-write, near-zero cost) via shutil.copy2. On other filesystems it
+    falls back to a full byte copy. We avoid hardlinks because a sandbox bug
+    that allowed an agent to write would propagate back into the shared cache.
+    """
+    shutil.copytree(src, dst, dirs_exist_ok=True, symlinks=True)
+
+
+def _agent_env() -> dict[str, str]:
+    """Build a clean env for spawning agent CLIs.
+
+    When this experiment harness itself runs inside Claude Code, the parent
+    sets ANTHROPIC_API_KEY to a placeholder and exports CLAUDE_CODE_* vars
+    that wire it into the parent SSE session. Inheriting those into a child
+    `claude -p` subprocess makes the child try to authenticate with the
+    placeholder and fail with 401. We want the child to use its own
+    on-disk credentials (~/.claude.json), so we strip those vars here.
+
+    OPENAI_* vars are scrubbed for the same reason on the codex side, in
+    case the harness is ever invoked with a stale key in env.
+    """
+    env = dict(os.environ)
+    for var in (
+        "ANTHROPIC_API_KEY",
+        "ANTHROPIC_AUTH_TOKEN",
+        "CLAUDE_CODE_SSE_PORT",
+        "CLAUDE_CODE_ENTRYPOINT",
+        "CLAUDECODE",
+        "CLAUDE_CODE_EXECPATH",
+        "OPENAI_API_KEY",
+    ):
+        env.pop(var, None)
+    return env
+
+
 async def _run(cmd: list[str], cwd: Path, timeout: float) -> tuple[str, str, int]:
     proc = await asyncio.create_subprocess_exec(
         *cmd,
         cwd=str(cwd),
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
+        env=_agent_env(),
     )
     try:
         stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(), timeout=timeout)

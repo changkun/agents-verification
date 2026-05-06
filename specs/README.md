@@ -4,6 +4,23 @@ Each spec describes one self-contained experiment: what it measures, how it's se
 
 Seven experiments split into three architectures: **parallel consensus** (01–05), where N agents answer the same question independently; **sequential chains** (06), where agents process each other's output; and **adversarial dialectic** (07), where two agents debate under an external judge. A separate repo, [latere-ai/debate](https://github.com/latere-ai/debate), holds the tool that productizes architecture 07 and is gated on spec 07a's results.
 
+## Status
+
+| Spec | Implementation | Smoke run | Full run | Results |
+|------|----------------|-----------|----------|---------|
+| 01 — Verifiable consensus      | ✅ | ✅ 2026-05-06 | ⏳ | [`results/01_verifiable_consensus/`](../results/01_verifiable_consensus/) |
+| 02 — Byzantine injection       | ⏳ | ⏳ | ⏳ | — |
+| 03 — Bug detection             | ⏳ | ⏳ | ⏳ | — |
+| 04 — Ambiguous-spec detection  | ⏳ | ⏳ | ⏳ | — |
+| 05 — Consensus-gated actions   | ⏳ | ⏳ | ⏳ | — |
+| 06 — Cascading hallucination   | ⏳ | ⏳ | ⏳ | — |
+| 07 — Adversarial debate        | ⏳ | ⏳ | ⏳ | — |
+
+Smoke = end-to-end pipeline check on a tiny config. Full = the spec-prescribed
+sweep. Smoke results are **not** sufficient evidence for any of the hypotheses
+in the specs; they prove the runner works and produce a small sample for
+inspection.
+
 ## Parallel-consensus experiments
 
 1. **[01-verifiable-consensus.md](01-verifiable-consensus.md)** — baseline. Can N headless coding agents agree on an answer with objective ground truth? Measures both *liveness* (did they agree?) and *safety* (were they right?), which the blog argues are separable failure modes.
