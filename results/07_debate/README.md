@@ -19,11 +19,23 @@ both honest, claude_p_claude_c roles, 4 rounds, 2 snippets.
 
 ## Run order
 
+Step 1 (smoke) is a preflight harness check, not an experiment. The first
+run that actually tests spec 07 is step 2 — read both before running.
+
+Prerequisites: `uv sync`, plus an authenticated `claude` CLI on PATH
+for steps 1–2 (the default `claude_p_claude_c` roles). Step 3's
+heterogeneous-role variants additionally require an authenticated
+`codex` CLI. See top-level [README.md](../../README.md#setup) for the
+full setup.
+
+Run all commands below from the repository root — `experiments/...`
+paths are repo-root-relative.
+
 1. **Smoke** — sanity check the wiring (~2 min):
    `uv run python experiments/07_debate.py --smoke`
-2. **First spec-07 run that exercises the debate architecture** — the spec's
-   H6 test (p-byzantine proposer on a clear bug). The smoke run only proves
-   the harness; this is the first one that actually tests the architecture:
+2. **Architecture test (H6)** — p-byzantine proposer on a clear bug. The
+   smoke run only proves the harness wiring; this is the run that actually
+   exercises the debate architecture:
    `uv run python experiments/07_debate.py --honesty p-byzantine --snippet-ids S01 --trials 5`
 3. **Broaden** along the axes in [How to extend (07a)](#how-to-extend-07a).
 

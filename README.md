@@ -279,3 +279,7 @@ uv run python experiments/07_debate.py --honesty p-byzantine --snippet-ids S01,S
 - DecentLLMs leaderless consensus — [arXiv:2507.14928](https://arxiv.org/abs/2507.14928)
 - AgentsNet benchmark — [arXiv:2507.08616](https://arxiv.org/abs/2507.08616)
 - FREE-MAD premature convergence — [arXiv:2509.11035](https://arxiv.org/abs/2509.11035)
+- Irving, Christiano, Amodei, "AI Safety via Debate" — [arXiv:1805.00899](https://arxiv.org/abs/1805.00899)
+- Brown-Cohen, Irving, Piliouras, "Scalable AI Safety via Doubly-Efficient Debate" — [arXiv:2311.14125](https://arxiv.org/abs/2311.14125) (theoretical foundation for specs 07–11)
+- Brown-Cohen, Irving, Piliouras, "Avoiding Obfuscation with Prover-Estimator Debate" — [arXiv:2506.13609](https://arxiv.org/abs/2506.13609) (theoretical foundation for spec 12)
+- Brown-Cohen, Irving, Marshall, Newman, Piliouras, Szegedy, "Debate is Efficient with Your Time" — [arXiv:2602.08630](https://arxiv.org/abs/2602.08630) (theoretical foundation for spec 13)

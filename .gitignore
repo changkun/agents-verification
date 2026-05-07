@@ -25,3 +25,7 @@ experiments/questions.yaml
 analysis/*.png
 analysis/*.md
 !analysis/README.md
+
+# Transient reviewer state from the `debate` tool. Session transcripts and
+# critic forks live here; nothing under .debate/ should ever land in history.
+.debate/
