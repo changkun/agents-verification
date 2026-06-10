@@ -98,11 +98,17 @@ errors *amplify* rather than average out.
 Two agents (Proposer, Critic) play a fixed 4-round game; an *external* judge
 inspects only the critic's R4 stake. Soundness no longer needs honest
 majority — it needs one honest player plus a calibrated leaf judge. Specs
-08–13 keep this protocol shape and vary one axis each: compute asymmetry
+08–11 instantiate the four axes opened up by Brown-Cohen, Irving, Piliouras,
+*Scalable AI Safety via Doubly-Efficient Debate*
+([arXiv:2311.14125](https://arxiv.org/abs/2311.14125)) — compute asymmetry
 between players (08), round count and recursion (09), temperature (10),
-leaf format narrowness (11), Prover-Estimator replacing the Critic role
-(12), and judge query budget vs. snippet complexity (13). Their motivating
-papers are listed in [References](#references).
+and leaf format narrowness (11). Spec 12 instantiates the same authors'
+2025 follow-up on the obfuscated-arguments attack
+([arXiv:2506.13609](https://arxiv.org/abs/2506.13609)), replacing the Critic
+role with a Prover-Estimator. Spec 13 instantiates the 2026 follow-up on
+Debate Query Complexity
+([arXiv:2602.08630](https://arxiv.org/abs/2602.08630)), measuring empirical
+judge query budget against snippet complexity.
 
 ```text
        snippet + spec
@@ -278,10 +284,14 @@ uv run python experiments/07_debate.py --honesty p-byzantine --snippet-ids S01,S
 
 ### 08–13 — Debate extensions (spec only)
 
-The doubly-efficient-debate batch is currently spec-only — no runners yet.
-Per-spec status and descriptions: [`specs/README.md`](specs/README.md#status).
-Recommended execution order once implementations land:
-**10 → 11 → 12 → 08 → 09 → 13** ([rationale](specs/README.md#execution-order-08-13-batch)).
+Extensions to the doubly-efficient-debate framework
+([arXiv:2311.14125](https://arxiv.org/abs/2311.14125)) and its 2025/2026
+follow-ups ([arXiv:2506.13609](https://arxiv.org/abs/2506.13609),
+[arXiv:2602.08630](https://arxiv.org/abs/2602.08630)). Currently spec-only
+— no runners yet. Per-spec status and descriptions:
+[`specs/README.md`](specs/README.md#status). Recommended execution order
+once implementations land: **10 → 11 → 12 → 08 → 09 → 13**
+([rationale](specs/README.md#execution-order-08-13-batch)).
 
 ## References
 
